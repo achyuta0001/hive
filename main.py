@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from connectors.markdown_fs import list_documents
+from connectors import markdown_fs, notion
 from core.hash_diff import filter_changed, mark_synced, reset_state
 from core.compiler import compile_docs
 
@@ -35,9 +35,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider", "-p",
-        choices=["ollama", "claude"],
-        default="ollama",
-        help="LLM provider for synthesis (default: ollama). Use 'claude' with ANTHROPIC_API_KEY set.",
+        choices=["ollama", "claude", "nvidia"],
+        default="nvidia",
+        help="LLM provider for synthesis (default: nvidia, needs NVIDIA_NIM_API_KEY set). Use 'claude' with ANTHROPIC_API_KEY set, or 'ollama' for local/free.",
     )
     parser.add_argument(
         "--topic", "-t",
@@ -52,7 +52,13 @@ def main() -> None:
     parser.add_argument(
         "--folder",
         default="sample_docs",
-        help="Folder to scan for .md files (default: 'sample_docs').",
+        help="Folder to scan for .md files (default: 'sample_docs'). Ignored for --source notion.",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["markdown", "notion"],
+        default="markdown",
+        help="Document source (default: markdown). Use 'notion' with NOTION_API_KEY set.",
     )
     args = parser.parse_args()
 
@@ -62,8 +68,12 @@ def main() -> None:
         print("State reset — all documents will be treated as new/changed.")
 
     # --- 1. Ingest ---
-    print(f"Scanning {args.folder!r} for markdown files...")
-    docs = list_documents(args.folder)
+    if args.source == "notion":
+        print("Scanning Notion for shared pages/databases...")
+        docs = notion.list_documents()
+    else:
+        print(f"Scanning {args.folder!r} for markdown files...")
+        docs = markdown_fs.list_documents(args.folder)
     print(f"Found {len(docs)} document(s).")
 
     if not docs:

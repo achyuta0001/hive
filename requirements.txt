@@ -2,3 +2,6 @@ pydantic>=2.0
 python-frontmatter>=1.0
 ollama>=0.4
 anthropic>=0.40
+fastapi>=0.115
+uvicorn>=0.32
+mcp>=1.1
