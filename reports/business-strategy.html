@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hive — Business Strategy: Monetization, Risk, and Moat</title>
+<style>
+  :root {
+    --ink: #1a1d24;
+    --muted: #5b6472;
+    --line: #e4e7ec;
+    --bg: #ffffff;
+    --panel: #f7f8fa;
+    --accent: #2456e8;
+    --accent-soft: #eaf0ff;
+    --good: #1f9d55;
+    --warn: #b8770a;
+    --bad: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Arial, -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 32px; }
+  header.hero {
+    background: linear-gradient(180deg, #10131a 0%, #1a2030 100%);
+    color: #fff;
+    padding: 60px 0 44px;
+  }
+  header.hero .eyebrow {
+    color: #8fa8ff;
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  header.hero h1 { margin: 0 0 12px; font-size: 2.1rem; letter-spacing: -0.02em; }
+  header.hero p.lead { font-size: 1.05rem; color: #c3cad9; max-width: 640px; margin: 0; }
+  main { padding: 48px 0 40px; }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 24px;
+  }
+  h2 { margin-top: 0; font-size: 1.25rem; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  h3 { color: var(--accent); font-size: 1rem; margin: 20px 0 6px; }
+  h3:first-child { margin-top: 0; }
+  p { color: #333a45; margin: 0 0 12px; }
+  .tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .tag.good { background: rgba(31,157,85,0.12); color: var(--good); }
+  .tag.warn { background: rgba(184,119,10,0.12); color: var(--warn); }
+  .tag.bad { background: rgba(192,57,43,0.12); color: var(--bad); }
+  ul { padding-left: 22px; margin: 8px 0 12px; }
+  li { margin-bottom: 8px; color: #333a45; }
+  ol.numbered { padding-left: 22px; }
+  ol.numbered li { margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 0.9rem; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .callout {
+    border-left: 3px solid var(--accent);
+    padding: 4px 0 4px 18px;
+    margin: 16px 0;
+    background: var(--accent-soft);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 16px;
+  }
+  .callout p { margin: 0; font-size: 0.94rem; }
+  footer { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 20px 0 48px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Business Strategy Notes</div>
+    <h1>Hive — Monetization, Risk, and Competitive Moat</h1>
+    <p class="lead">
+      Working notes on how Hive could be monetized, what risks that carries,
+      whether it's competitively defensible, and what it would take to make
+      it genuinely hard to replicate.
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section>
+  <h2>1. Monetization models — SaaS vs. self-hosted + license</h2>
+  <p>Two fundamentally different ways to charge for this:</p>
+  <ol class="numbered">
+    <li><strong>SaaS</strong> — you run it, customer logs in and pays per seat/usage. Easier to sell (no install friction), but requires building auth, multi-tenant isolation, billing, and uptime/security guarantees before a single sale. You carry the infra and data-custody risk.</li>
+    <li><strong>Self-hosted + annual license (+ support contract)</strong> — customer runs it on their own infrastructure, pays for the right to use it. You carry almost no ongoing ops burden; customer carries their own infra.</li>
+  </ol>
+  <div class="callout">
+    <p><strong>Recommendation: self-hosted + license first.</strong> Hive's origin — cutting AI-agent RAG costs at a bank against Confluence — points directly at a compliance-sensitive first buyer who will not send internal docs to a third-party SaaS, regardless of price. The self-hosted artifact is also nearly what already exists (CLI + connectors + serving API + MCP server); turning it into a paid product is packaging + a license check, not new engineering. SaaS is a legitimate later tier for a different buyer (smaller teams without data-residency constraints), not the first move.</p>
+  </div>
+  <h3>Pricing anchor</h3>
+  <p>
+    <code>hash_diff.py</code> already measures exactly how much content triggered
+    an LLM call vs. was skipped — a genuine, provable number: "your agents
+    stopped re-processing the same docs N times a week; here's the token cost
+    before vs. after." Usage/value-based pricing anchored to this is a
+    stronger sell to an engineering buyer than a generic per-seat fee, and is
+    self-justifying in the sales conversation.
+  </p>
+  <h3>Go-to-market difference</h3>
+  <p>
+    SaaS implies a self-serve motion (sign up, credit card, PLG/marketing).
+    Self-hosted + license implies a sales motion (pilot, human conversation,
+    contract) — slower per deal, larger deal size, and matches how an
+    enterprise buyer's procurement actually works. Given the target buyer,
+    the sales motion is the realistic one.
+  </p>
+</section>
+
+<section>
+  <h2>2. A concrete hosted-MCP monetization flow</h2>
+  <p>
+    Proposed flow: <em>Claude Code → MCP → login/pay → access enterprise
+    knowledge base.</em> This is a real, standard pattern — the "login and
+    pay" gate sits at the MCP connection layer itself instead of a website.
+  </p>
+  <ul>
+    <li>Today's <code>mcp_server.py</code> uses <strong>stdio transport</strong> (local subprocess, no auth — single user, single machine).</li>
+    <li>The paid version would use <strong>remote HTTP-transport MCP</strong> instead — a hosted server reachable over the internet, where connecting requires an API key or OAuth token tied to a paid account. This is what MCP's spec supports natively, not a new pattern.</li>
+    <li>This <em>is</em> the "hosted SaaS" tier from section 1, just expressed through the MCP connection instead of a web login page.</li>
+  </ul>
+  <p>
+    Nothing about this contradicts the self-host-first recommendation — it's
+    the same later-stage SaaS tier for the buyer segment that's fine with
+    hosted. The Q1/Q2 serving-layer design already built (explicit params,
+    no global state, HTTP API as single source of truth) is specifically
+    what makes this addable later without a rewrite — but it's still a real
+    build (auth, per-tenant isolation, billing), not a switch to flip.
+  </p>
+</section>
+
+<section>
+  <h2>3. Risks carried by the hosted model</h2>
+  <table>
+    <tr><th>Risk</th><th>Why it matters</th></tr>
+    <tr>
+      <td><strong>Data custody / compliance</strong></td>
+      <td>Hosting customer docs makes you legally responsible for protecting them (PII, credentials-adjacent info, regulated data). For the original target buyer (a bank), hosting their content may be a non-starter regardless of security quality — exactly why self-host-first was recommended.</td>
+    </tr>
+    <tr>
+      <td><strong>Third-party LLM exposure</strong></td>
+      <td>Every compile sends customer content to NVIDIA/Anthropic/etc. Needs contractual guarantees (data processing agreements, no-training-on-input clauses), and passes that liability through to your customers. This is the same category of risk the project was originally built to avoid.</td>
+    </tr>
+    <tr>
+      <td><strong>Multi-tenant isolation bugs</strong></td>
+      <td>A single missing <code>tenant_id</code> filter leaks Customer A's wiki into Customer B's session — the most damaging failure mode for a B2B knowledge product. Needs tests specifically for cross-tenant leakage, not just a schema column.</td>
+    </tr>
+    <tr>
+      <td><strong>Availability dependency</strong></td>
+      <td>Once an org's coding agents depend on your hosted MCP server, your uptime is their uptime — a silent, hard-to-debug degradation of their agents' knowledge access during any outage.</td>
+    </tr>
+    <tr>
+      <td><strong>Cost / billing exposure</strong></td>
+      <td>LLM calls are the core cost driver. Multi-tenant hosting exposes you to usage spikes or abuse hitting your provider bill before payment is collected. Needs per-tenant rate limits and caps from day one.</td>
+    </tr>
+    <tr>
+      <td><strong>Correctness liability</strong></td>
+      <td>If the compiler ever silently resolves a contradiction it should have flagged (the exact failure <code>_validate_output</code> guards against locally) and a customer acts on the wrong merged page, that's a real liability — the core product promise has to hold under real production load, not just test fixtures.</td>
+    </tr>
+    <tr>
+      <td><strong>Secrets / attack surface</strong></td>
+      <td>The hosted server holds your own provider API keys and calls them on customers' behalf. A key leak, or prompt injection via ingested documents once the server is internet-facing, is a real attack surface that doesn't exist in the local-only stdio version.</td>
+    </tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. Competitive moat — can Anthropic or open source just do this?</h2>
+  <span class="tag bad">Real risk, not hypothetical</span>
+  <p>
+    Honest answer: yes, and this is the biggest strategic risk to the
+    business, larger than any operational risk above. None of the individual
+    pieces are defensible IP:
+  </p>
+  <ul>
+    <li>The ingest → hash-diff → LLM-merge-with-conflict-flag pattern is a straightforward pipeline, not a hard technical innovation.</li>
+    <li>The "Open Conflicts" system-prompt technique is a prompting pattern anyone can replicate.</li>
+    <li>MCP is Anthropic's own open spec — nothing stops Anthropic shipping an equivalent feature natively inside Claude Code, bundled into a product they already distribute. This is the scenario that should worry the business most: not a random clone, but the platform vendor absorbing the feature.</li>
+  </ul>
+  <h3>Where a real (if modest) moat could come from</h3>
+  <ol class="numbered">
+    <li><strong>Connector breadth done well, over time.</strong> Confluence's v1/v2 split and XML format is tedious, unglamorous work a platform vendor may not prioritize for every niche source. A grind-based moat, not a technical one, but it compounds.</li>
+    <li><strong>Compliance/trust packaging for self-hosted enterprise buyers.</strong> Security review readiness, support contracts, on-prem deployment maturity — a business/relationship moat a platform vendor selling to individual developers has little incentive to build.</li>
+    <li><strong>Accumulated tuning against real, messy content</strong> — an eval suite built from real failures (silent doc-dropping, false-negative conflict detection, duplicate-heading bugs already found this session). Modest, closes fast against a well-resourced competitor.</li>
+  </ol>
+  <div class="callout">
+    <p><strong>Bottom line:</strong> this is not, as built, a deep-tech moat business — it's a thin wrapper around commodity LLM capability plus unglamorous integration and trust work. Legitimate business model (Zapier, Fivetran are built the same way), but "stand out" has to mean "did the tedious work first and better," not "hard technology to copy."</p>
+  </div>
+</section>
+
+<section>
+  <h2>5. What it would take to build a real deep-tech moat</h2>
+  <p>Three directions that move past "prompt an LLM well" into genuinely hard, defensible territory:</p>
+  <h3>A. Scalable contradiction detection (systems/algorithms problem)</h3>
+  <p>
+    The current approach doesn't scale — an entire knowledge base can't fit
+    in one LLM context once there are thousands of documents. A real moat:
+    embedding-based candidate generation to narrow down which document pairs
+    are plausibly related, then cheap verification only on real candidates,
+    instead of O(n²) brute-force pairwise LLM calls. Genuine systems
+    engineering, not a prompt tweak.
+  </p>
+  <h3>B. Structured claim extraction with provenance/versioning (NLP problem)</h3>
+  <p>
+    Instead of feeding raw markdown to an LLM and hoping it notices a
+    conflict, extract discrete structured claims from each document (claim,
+    source, timestamp), store them with provenance and versioning, and
+    detect contradictions by comparing claims logically rather than
+    re-reading whole documents every time. Also solves knowing which claim
+    is more current/authoritative, not just that two things disagree.
+  </p>
+  <h3>C. A proprietary fine-tuned model + owned benchmark (ML/data problem)</h3>
+  <p>
+    A small model distilled/fine-tuned specifically for contradiction
+    detection, on a large proprietary dataset of real conflicting document
+    pairs accumulated over time, could beat a general frontier model on this
+    narrow task while being cheaper and faster. The moat is the dataset, not
+    the model architecture — compounded by owning the public benchmark for
+    this task, making the tuned model the provable, cited best.
+  </p>
+</section>
+
+<section>
+  <h2>6. How hard is option B, specifically?</h2>
+  <span class="tag good">Weeks of engineering, not months of research</span>
+  <p>Breaking option B into its real sub-parts:</p>
+  <table>
+    <tr><th>Sub-part</th><th>Difficulty</th><th>Why</th></tr>
+    <tr>
+      <td>Claim extraction from documents</td>
+      <td><strong>Easy now</strong></td>
+      <td>Modern LLMs already do this well via a structured-output prompt. This was hard five years ago; today it's a prompt-engineering task similar in tier to what <code>compiler.py</code> already does.</td>
+    </tr>
+    <tr>
+      <td>Storing claims + provenance + versioning</td>
+      <td><strong>Easy, pure engineering</strong></td>
+      <td>A schema plus a datastore (reuse the existing SQLite pattern from <code>hash_diff.py</code>) and supersession logic using <code>last_modified</code> (already in the canonical schema). Days, not weeks, for a competent engineer.</td>
+    </tr>
+    <tr>
+      <td>Judging whether two matched claims contradict</td>
+      <td><strong>Easy, LLMs already do this well</strong></td>
+      <td>Narrower and easier than today's whole-document conflict detection — comparing two short statements instead of asking a model to read six documents and notice something.</td>
+    </tr>
+    <tr>
+      <td>Matching claims "about the same thing" worded differently</td>
+      <td><strong>The genuinely hard part</strong></td>
+      <td>Needed to compare claims at all. Requires avoiding both false matches (unrelated claims flagged as the same topic) and missed matches. Approachable with embedding similarity + LLM verification, but reliable tuning here — not a demo that just works — is where real, sustained effort goes.</td>
+    </tr>
+  </table>
+  <div class="callout">
+    <p><strong>Verdict:</strong> a working first version is realistically a few weeks of solid engineering on the existing codebase, not a multi-month research project. Claim extraction and contradiction judgment are already within current LLM capability; claim matching is the one part worth calling genuinely hard — and it's exactly where continued iteration, not one-time build effort, is what would eventually make this a real moat rather than a toy.</p>
+  </div>
+</section>
+
+<section>
+  <h2>7. Security hardening roadmap for the hosted MCP model</h2>
+  <p>
+    Concrete, ordered steps to make the section 2/3 hosted-MCP direction
+    actually safe to sell, not just theoretically risky. Roughly in the
+    order they'd need to be tackled.
+  </p>
+  <ol class="numbered">
+    <li>
+      <strong>Tenant isolation as a tested invariant, not a column.</strong>
+      Every query path (<code>get_wiki_page</code>, <code>check_conflicts</code>,
+      future search) must be scoped by <code>tenant_id</code> at the data
+      layer, not just the application layer — e.g. separate SQLite files or
+      Postgres row-level security per tenant, not a shared table with a
+      filter that can be forgotten in one code path. Write cross-tenant
+      leakage tests specifically (tenant A's key must never return tenant
+      B's data) as a required, standing part of the test suite, not a
+      one-time check.
+    </li>
+    <li>
+      <strong>Auth at the MCP/HTTP boundary, scoped tokens.</strong>
+      Remote MCP transport needs per-tenant API keys or OAuth tokens that
+      map to exactly one tenant's data — no shared master key. Tokens
+      should be revocable and scoped (read-only vs. check-conflicts) rather
+      than all-or-nothing.
+    </li>
+    <li>
+      <strong>Secrets management for the provider keys.</strong>
+      The server's own NVIDIA/Anthropic keys must never be reachable by
+      tenant input — no tenant-supplied string should ever influence which
+      key or endpoint is called. Store provider keys in a secrets manager,
+      not env vars on a shared host, once this is multi-tenant.
+    </li>
+    <li>
+      <strong>Prompt-injection defense on ingested content.</strong>
+      Since documents come from customer-controlled sources (Notion pages,
+      wikis), a malicious or compromised document could contain text
+      designed to manipulate the compiler's LLM call. Needs input
+      sanitization/allow-listing of what an ingested document can cause the
+      system to do, and treating LLM output as untrusted until validated —
+      <code>_validate_output</code> already does some of this for structure;
+      it doesn't yet defend against adversarial content in the source docs.
+    </li>
+    <li>
+      <strong>Per-tenant rate limiting and cost caps.</strong>
+      Before any billing exists, cap how much LLM spend one tenant (or one
+      compromised key) can generate. This is both a cost-risk and an abuse
+      mitigation (a runaway or malicious client shouldn't be able to hit
+      the provider account without limit).
+    </li>
+    <li>
+      <strong>Data processing agreements with LLM providers.</strong>
+      Before hosting real customer content, need contractual guarantees
+      (no training on input, data residency/retention terms) with
+      NVIDIA/Anthropic/whichever providers are in the routing path — this
+      is a legal/business step, not code, but blocks selling to any
+      compliance-conscious customer without it.
+    </li>
+    <li>
+      <strong>Audit logging.</strong>
+      Every read/write of a tenant's compiled knowledge should be logged
+      (who, when, what) — both for the tenant's own compliance needs and
+      for incident investigation if isolation ever fails.
+    </li>
+    <li>
+      <strong>Third-party security review before first paying customer.</strong>
+      Given the target buyer profile (compliance-sensitive orgs), an
+      external security assessment or pen test of the hosted path is
+      realistically a prerequisite for the first real enterprise sale, not
+      an optional nice-to-have.
+    </li>
+  </ol>
+  <div class="callout">
+    <p><strong>Sequencing note:</strong> items 1–5 are engineering work that
+    can happen alongside building the hosted tier itself. Items 6–8 are
+    business/process work that gate an actual first sale — worth starting
+    in parallel rather than after the code is done, since they typically
+    take longer than expected (provider legal review, external audits).</p>
+  </div>
+</section>
+
+</main>
+
+<footer>Hive — business strategy working notes, 2026-07-13.</footer>
+
+</body>
+</html>
