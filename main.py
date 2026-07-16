@@ -1,22 +1,28 @@
 """
 main.py — Hive pipeline orchestration script.
 
-Ties together the three finished modules into a single runnable entry point:
-1. markdown_fs.list_documents()  — ingest all .md files from sample_docs/
-2. hash_diff.filter_changed()    — skip unchanged content
-3. compiler.compile_docs()       — merge changed docs into a wiki page
-4. hash_diff.mark_synced()       — record hashes so next run skips them
+Ties the pipeline modules into a single runnable entry point:
+1. connector.list_documents()   — ingest (markdown folder or Notion)
+2. hash_diff.filter_changed()   — skip unchanged content
+3. embeddings.embed_docs()      — vectorize new/changed docs (stored vectors reused)
+4. clustering.cluster_docs()    — group ALL docs into topics
+5. compiler.compile_docs()      — merge each changed cluster into a wiki page
+6. hash_diff.mark_synced()      — record hashes so next run skips them
 
 Usage:
-    python main.py                          # default: ollama, topic="test-topic"
-    python main.py --provider claude        # use Claude Haiku instead of Ollama
-    python main.py --topic deployment       # custom topic slug
+    python main.py                          # cluster mode: one page per topic
+    python main.py --provider claude        # use Claude Haiku for synthesis
+    python main.py --embed-provider ollama  # local nomic-embed-text embeddings
+    python main.py --cluster-threshold 0.75 # stricter topic grouping
+    python main.py --topic deployment       # legacy: all changed docs, one page
     python main.py --reset                  # treat all docs as new
 
 Done signals:
-    - First run compiles a wiki page.
-    - Second run (no changes) prints "Nothing changed, skipping." with zero LLM calls.
-    - Editing one file in sample_docs/ triggers recompilation of only that content.
+    - First run embeds all docs and compiles one wiki page per topic cluster.
+    - Second run (no changes) prints "Nothing changed, skipping." with zero
+      embedding or LLM calls.
+    - Editing one file in sample_docs/ re-embeds only that doc and recompiles
+      only its cluster.
 """
 
 from __future__ import annotations
@@ -25,8 +31,10 @@ import argparse
 import sys
 
 from connectors import markdown_fs, notion
-from core.hash_diff import filter_changed, mark_synced, reset_state
+from core.hash_diff import filter_changed, load_embeddings, mark_synced, reset_state, save_embeddings
 from core.compiler import compile_docs
+from core.clustering import cluster_docs
+from core.embeddings import embed_docs
 
 
 def main() -> None:
@@ -41,8 +49,23 @@ def main() -> None:
     )
     parser.add_argument(
         "--topic", "-t",
-        default="test-topic",
-        help="Topic slug for the output wiki page (default: 'test-topic').",
+        default=None,
+        help="Force all changed docs into one wiki page under this slug (legacy "
+             "single-batch mode). Omit to cluster docs into topics automatically.",
+    )
+    parser.add_argument(
+        "--embed-provider",
+        choices=["nvidia", "ollama"],
+        default="nvidia",
+        help="Embedding provider for topic clustering (default: nvidia).",
+    )
+    parser.add_argument(
+        "--cluster-threshold",
+        type=float,
+        default=0.7,
+        help="Cosine similarity threshold for grouping docs into one topic "
+             "(default: 0.7 — e5-family embeddings score high across the board, "
+             "0.6 chains unrelated topics together).",
     )
     parser.add_argument(
         "--reset", "-r",
@@ -94,19 +117,51 @@ def main() -> None:
     print(f"{len(changed)} document(s) changed — compiling...")
 
     # --- 3. Compile ---
-    try:
-        out_path = compile_docs(changed, args.topic, provider=args.provider)
-    except Exception as exc:
-        print(f"Compilation failed: {exc}", file=sys.stderr)
-        print("(State not saved — documents will retry on next run.)")
-        sys.exit(1)
+    if args.topic is not None:
+        # Legacy single-batch mode: everything changed goes into one page.
+        try:
+            out_paths = [compile_docs(changed, args.topic, provider=args.provider)]
+        except Exception as exc:
+            print(f"Compilation failed: {exc}", file=sys.stderr)
+            print("(State not saved — documents will retry on next run.)")
+            sys.exit(1)
+    else:
+        # Cluster mode: embed what's new/stale, reuse stored vectors for the
+        # rest, group ALL docs by topic, recompile only clusters that contain
+        # at least one changed doc.
+        stored = load_embeddings(docs)
+        need_embed = [d for d in docs if f"{d.source}::{d.id}" not in stored]
+        try:
+            fresh = embed_docs(need_embed, provider=args.embed_provider)
+        except Exception as exc:
+            print(f"Embedding failed: {exc}", file=sys.stderr)
+            print("(State not saved — documents will retry on next run.)")
+            sys.exit(1)
+        save_embeddings(need_embed, fresh)
+        print(f"Embedded {len(fresh)} doc(s), reused {len(stored)} stored vector(s).")
+
+        clusters = cluster_docs(docs, {**stored, **fresh}, threshold=args.cluster_threshold)
+        changed_keys = {f"{d.source}::{d.id}" for d in changed}
+
+        out_paths = []
+        for slug, members in clusters:
+            if not any(f"{m.source}::{m.id}" in changed_keys for m in members):
+                print(f"Topic '{slug}': unchanged, skipping.")
+                continue
+            try:
+                out_paths.append(compile_docs(members, slug, provider=args.provider))
+            except Exception as exc:
+                print(f"Compilation failed for topic '{slug}': {exc}", file=sys.stderr)
+                print("(State not saved — documents will retry on next run.)")
+                sys.exit(1)
 
     # --- 4. Record ---
     mark_synced(changed)
 
     # --- 5. Report ---
-    print(f"Compiled {len(changed)} changed doc(s) → {out_path}")
-    print(f"Provider: {args.provider}")
+    for out_path in out_paths:
+        print(f"Compiled → {out_path}")
+    print(f"{len(changed)} changed doc(s), {len(out_paths)} page(s). Provider: {args.provider}")
     print("Done.")
 
 
