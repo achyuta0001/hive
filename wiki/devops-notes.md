@@ -1,0 +1,103 @@
+## Deployment Guide
+
+*Source: deployment-guide.md*
+
+Title: Deployment Guide
+
+# Deployment Guide
+
+This document describes the standard deployment process for all production
+services at Acme Corp. All teams must follow this procedure unless an
+explicit exception has been approved by the infrastructure team.
+
+## Pre-deployment checklist
+
+Before any production deploy, the following items must be completed:
+
+1. All CI checks on the release branch must be green.
+2. A rollback plan must be documented in the deploy request ticket.
+3. The on-call engineer must be notified at least 30 minutes before the
+   deploy window opens.
+
+## Migration order
+
+Database migrations must be run **before** the new application code is
+deployed. This ensures that any new columns, tables, or constraints exist
+before the application attempts to use them. Running migrations first also
+means that if the app deploy fails partway through, the database is already
+in the correct state and a rollback-forward is simpler than undoing both
+schema and code changes simultaneously.
+
+## Post-deployment verification
+
+After the deploy completes, the engineer must verify the following within
+15 minutes:
+
+- Health-check endpoints return 200 for all instances.
+- Key business metrics (sign-up rate, checkout success) have not dropped
+  below the pre-deploy baseline.
+- Error tracking (Sentry) shows no new error types at elevated volume.
+
+If any of these checks fail, initiate the rollback plan immediately —
+do not attempt to hotfix in production.
+
+---
+
+## DevOps Notes
+
+*Source: devops-notes.md*
+
+Title: DevOps Notes
+
+# DevOps Notes
+
+Internal working notes from the DevOps team. These reflect practical
+experience and may override the official deployment guide where they
+conflict — check with the team if unsure.
+
+## Deployment flow (as actually practiced)
+
+Over the last 18 months we've learned the hard way that running migrations
+**after** the new code is deployed avoids a whole class of outages. Here's why:
+
+- If a migration adds a NOT NULL column without a default, and the old app
+  code is still running, inserts start failing immediately. Deploying code
+  first (which knows about the new column) prevents this.
+- Rolling back code is fast (swap the artifact). Rolling back a migration
+  is slow and sometimes impossible (data loss risk). So we want the safer
+  thing — the migration — to happen last, after we're confident the new
+  code is stable.
+- We've had three SEV-2 incidents in the last year where "migrations first"
+  was the root cause. The postmortems all recommended reversing the order.
+
+## Hotfix protocol
+
+For critical production fixes, the full checklist can be abbreviated:
+
+1. Skip the 30-minute on-call notification window (but ping them after).
+2. CI can be bypassed if the change is a single-line revert.
+3. Post-deployment verification is still mandatory — never skip health
+   checks and Sentry review, even for hotfixes.
+
+## Environment parity
+
+All staging deployments must mirror production deployment order exactly.
+We've seen bugs that only reproduce when staging uses a different migration
+order than prod. Don't let staging drift.
+
+---
+
+## Open Conflicts
+
+- **Migration order**: The Deployment Guide states that database migrations must be run **before** the new application code is deployed. The DevOps Notes advocate running migrations **after** the new code is deployed, citing practical experience and past incidents. (Sources: deployment-guide.md vs. devops-notes.md)
+
+- **On‑call notification for hotfixes**: The Deployment Guide requires the on‑call engineer to be notified at least 30 minutes before any deploy window opens. The DevOps Notes allow skipping that 30‑minute window for critical production hotfixes (though the engineer should be pinged afterward). (Sources: deployment-guide.md vs. devops-notes.md)
+
+- **CI checks for hotfixes**: The Deployment Guide mandates that all CI checks on the release branch must be green before a production deploy. The DevOps Notes permit bypassing CI for hotfixes that are single‑line reverts. (Sources: deployment-guide.md vs. devops-notes.md)
+
+---
+
+## Sources
+
+- deployment-guide.md
+- devops-notes.md

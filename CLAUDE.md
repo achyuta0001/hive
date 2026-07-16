@@ -25,7 +25,8 @@ that sits between ingestion and anything expensive — nothing should bypass it.
 ```bash
 pip install -r requirements.txt
 
-# Run the full pipeline (default: nvidia provider, "test-topic" slug, sample_docs/)
+# Run the full pipeline (default: nvidia provider, sample_docs/, automatic
+# embedding-based topic clustering — one wiki page per detected topic)
 python main.py
 
 # Use local/free Ollama instead (weaker at conflict-flagging, see note below)
@@ -34,8 +35,11 @@ python main.py --provider ollama
 # Use Claude Haiku instead (requires ANTHROPIC_API_KEY)
 python main.py --provider claude
 
-# Custom topic slug / input folder
+# Legacy single-batch mode: force all changed docs into one page under this slug
 python main.py --topic deployment --folder sample_docs
+
+# Tune clustering (0.7 default — e5 embeddings score high, 0.6 chains topics)
+python main.py --cluster-threshold 0.75 --embed-provider ollama
 
 # Ingest from Notion instead of markdown (requires NOTION_API_KEY)
 python main.py --source notion --topic notion-stress-test
@@ -54,11 +58,15 @@ There is no test suite, linter, or build step configured yet. Verify changes
 manually via the done signals below.
 
 **Manual verification loop (this is how correctness is checked in this repo):**
-1. `python main.py` — first run should compile `wiki/test-topic.md`.
+1. `python main.py --reset` — first run should embed all docs and compile one
+   `wiki/<slug>.md` per detected topic cluster (4 pages from `sample_docs/`).
 2. `python main.py` again — should print `Nothing changed, skipping.` and make
-   zero LLM calls.
-3. Edit one file in `sample_docs/`, run again — only that changed content
-   should trigger recompilation, not the whole batch.
+   zero embedding or LLM calls.
+3. Edit one file in `sample_docs/`, run again — only that doc re-embeds and
+   only its cluster recompiles; every other cluster prints
+   `Topic '<slug>': unchanged, skipping.`
+4. `python main.py --topic test-topic` — legacy single-batch mode still works
+   (all changed docs into one page, no clustering, no embeddings).
 
 Default provider is `nvidia` (NVIDIA NIM, needs `NVIDIA_NIM_API_KEY` set) —
 validated as the only provider so far that reliably produces the
@@ -71,8 +79,8 @@ observed to silently drop source documents and skip conflict-flagging on
 ## Architecture — the pipeline, in order
 
 ```
-connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.py
-   (ingest → Document)                  (filter unchanged)      (LLM merge → wiki/*.md)
+connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py → core/clustering.py → core/compiler.py
+   (ingest → Document)              (filter unchanged)   (vectorize changed)   (group by topic)    (LLM merge → wiki/*.md)
 ```
 
 1. **`core/canonical.py`** — the `Document` pydantic model
@@ -90,14 +98,39 @@ connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.p
    cost lever in the pipeline — never let anything downstream see a
    document that hasn't passed through this filter.
 
-3. **`connectors/markdown_fs.py`** — the first (and simplest) connector:
+3. **`core/embeddings.py`** — `embed_docs(docs, provider)` turns Documents
+   into vectors for clustering. Providers mirror the compiler switch:
+   `"nvidia"` (default — NIM embeddings endpoint via stdlib `urllib`, model
+   `nvidia/nv-embedqa-e5-v5`, same `NVIDIA_NIM_API_KEY`; the model caps
+   input at 512 tokens so the request passes `"truncate": "END"` and lets
+   the server cut, topic signal being front-loaded) or `"ollama"`
+   (`nomic-embed-text`, honors `OLLAMA_HOST`). Cost principle applies here
+   too: only new/changed docs get embedded — vectors persist in
+   `data/state.db` (`doc_embedding` table, keyed by source+id, stamped with
+   the content hash they were computed from so stale vectors are detected
+   and re-embedded). `save_embeddings`/`load_embeddings` live in
+   `core/hash_diff.py`.
+
+4. **`core/clustering.py`** — `cluster_docs(docs, embeddings, threshold)`
+   groups ALL docs (fresh + stored vectors) into topics: pairwise cosine
+   similarity, edge at ≥ threshold, connected components = clusters. Pure
+   stdlib, no numpy/sklearn. Slug per cluster derives from the dominant doc
+   (closest to centroid), slugified title, `-2`/`-3` suffixes on collision.
+   Default threshold is **0.7, not 0.6** — e5-family embeddings score high
+   across the board (observed 0.44–0.74 on unrelated sample docs), and 0.6
+   chains everything into one component. A cluster is only recompiled if it
+   contains ≥ 1 changed doc; unchanged clusters skip the LLM entirely.
+   Docs missing an embedding are excluded from clustering rather than
+   guessed at.
+
+5. **`connectors/markdown_fs.py`** — the first (and simplest) connector:
    walks a folder recursively for `.md` files, parses YAML frontmatter, and
    returns canonical `Document` objects. `permissions` is currently
    hardcoded to `["local"]` — a real permission-mapping layer must exist
    before adding any connector with real access control (Notion,
    Confluence).
 
-4. **`connectors/notion.py`** — the second connector, validated against a
+6. **`connectors/notion.py`** — the second connector, validated against a
    real workspace. `list_documents()` takes no folder arg (Notion has no
    filesystem); it calls `/v1/search` to auto-discover pages/databases
    explicitly shared with the integration token (`NOTION_API_KEY`), then
@@ -116,7 +149,7 @@ connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.p
    justified for a single-user MVP (see "cost principle" above; revisit if
    Hive ever needs multi-user/multi-workspace).
 
-5. **`core/compiler.py`** — the only stage that genuinely needs an LLM.
+7. **`core/compiler.py`** — the only stage that genuinely needs an LLM.
    `compile_docs(docs, topic_slug, provider)` takes a batch of related
    Documents and produces one merged wiki page at `wiki/{topic_slug}.md`.
    Provider is swappable: `"nvidia"` (default — NVIDIA NIM via
@@ -131,15 +164,17 @@ connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.p
    input id. `_validate_output(docs, merged)` checks all of this after the
    LLM call and raises `ValueError` (no retry) if anything's missing or a
    source doc got silently dropped — this happened on a weak local model
-   before validation existed. Grouping documents into topics is currently
-   naive (all changed docs treated as one batch) — smarter clustering via
-   embeddings is a planned follow-up, not yet implemented.
+   before validation existed. Batches arrive pre-grouped by
+   `core/clustering.py` (or as one manual batch in `--topic` legacy mode).
 
-6. **`main.py`** — orchestrates the four steps above and prints what
-   happened (compiled vs. skipped) so the hash-diff behavior stays
-   observable. `--source markdown|notion` selects the connector.
+8. **`main.py`** — orchestrates the pipeline and prints what happened
+   (embedded vs. reused vectors, compiled vs. skipped clusters) so the
+   hash-diff behavior stays observable. `--source markdown|notion` selects
+   the connector; `--embed-provider nvidia|ollama` the embedding backend;
+   `--cluster-threshold` tunes grouping; `--topic <slug>` forces legacy
+   single-batch mode (no clustering, no embeddings).
 
-7. **`server/app.py`** — the serving layer: a thin, long-lived FastAPI
+9. **`server/app.py`** — the serving layer: a thin, long-lived FastAPI
    process wrapping `core/` functions directly, no new business logic.
    `GET /wiki` lists compiled topics, `GET /wiki/{topic_slug}` fetches one.
    `POST /check-conflicts` reuses `compile_docs` itself — it builds a
@@ -151,7 +186,7 @@ connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.p
    `.claude/plans/frolicking-drifting-milner.md` for the full rationale
    (API scope, why not full-text search yet, agent-integration design).
 
-8. **`mcp_server.py`** — an MCP server (stdio transport) for Claude Code,
+10. **`mcp_server.py`** — an MCP server (stdio transport) for Claude Code,
    exposing `hive_get_wiki_page`, `hive_list_topics`, `hive_check_conflicts`
    as MCP tools. Deliberately a thin adapter that imports and calls
    `server/app.py`'s functions directly (same process, no HTTP hop) — there
@@ -180,9 +215,6 @@ connectors/{markdown_fs,notion}.py  →  core/hash_diff.py  →  core/compiler.p
 
 ## Planned next steps (not yet built, for context on direction)
 
-- Local embeddings (`nomic-embed-text` via Ollama) + cosine-similarity
-  grouping so documents cluster by topic automatically instead of being
-  naively batched.
 - `pgvector`/Postgres once SQLite's naive hash tracking becomes limiting
   (explicitly not before — don't add infra ahead of the need).
 - Rule-based conflict pre-checks (timestamp diff, numeric value diff,
