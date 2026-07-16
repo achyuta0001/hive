@@ -8,6 +8,7 @@ downstream (embeddings, LLM calls) only ever sees what comes out of here.
 
 from __future__ import annotations
 import hashlib
+import json
 import sqlite3
 from pathlib import Path
 
@@ -26,6 +27,17 @@ def _connect() -> sqlite3.Connection:
             doc_id TEXT NOT NULL,
             content_hash TEXT NOT NULL,
             last_synced TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (source, doc_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS doc_embedding (
+            source TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            vector TEXT NOT NULL,
             PRIMARY KEY (source, doc_id)
         )
         """
@@ -79,9 +91,57 @@ def mark_synced(docs: list[Document]) -> None:
     conn.close()
 
 
+def save_embeddings(docs: list[Document], vectors: dict[str, list[float]]) -> None:
+    """
+    Persist embedding vectors keyed by "<source>::<id>", stamped with the
+    content hash they were computed from, so stale vectors are detectable.
+    """
+    conn = _connect()
+    for doc in docs:
+        key = f"{doc.source}::{doc.id}"
+        if key not in vectors:
+            continue
+        content_hash = doc.content_hash or _hash_content(doc.content)
+        conn.execute(
+            """
+            INSERT INTO doc_embedding (source, doc_id, content_hash, vector)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(source, doc_id) DO UPDATE SET
+                content_hash = excluded.content_hash,
+                vector = excluded.vector
+            """,
+            (doc.source, doc.id, content_hash, json.dumps(vectors[key])),
+        )
+    conn.commit()
+    conn.close()
+
+
+def load_embeddings(docs: list[Document]) -> dict[str, list[float]]:
+    """
+    Load stored embeddings for the given docs. A vector is only returned if
+    its stored content hash matches the doc's current content - stale or
+    missing rows are silently omitted (caller should re-embed those).
+    """
+    conn = _connect()
+    result: dict[str, list[float]] = {}
+    for doc in docs:
+        row = conn.execute(
+            "SELECT content_hash, vector FROM doc_embedding WHERE source = ? AND doc_id = ?",
+            (doc.source, doc.id),
+        ).fetchone()
+        if row is None:
+            continue
+        current_hash = doc.content_hash or _hash_content(doc.content)
+        if row[0] == current_hash:
+            result[f"{doc.source}::{doc.id}"] = json.loads(row[1])
+    conn.close()
+    return result
+
+
 def reset_state() -> None:
     """Wipe all tracked state - useful for testing the pipeline from scratch."""
     conn = _connect()
     conn.execute("DELETE FROM doc_state")
+    conn.execute("DELETE FROM doc_embedding")
     conn.commit()
     conn.close()
