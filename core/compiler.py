@@ -14,6 +14,7 @@ import urllib.request
 from pathlib import Path
 
 from core.canonical import Document
+from core.precheck import find_candidate_conflicts, format_hints
 
 NVIDIA_NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
@@ -122,6 +123,14 @@ def compile_docs(docs: list[Document], topic_slug: str, provider: str = "ollama"
         raise ValueError("compile_docs called with an empty document list")
 
     prompt = _build_prompt(docs)
+
+    # Deterministic pre-checks: point the LLM at candidate contradictions it
+    # must confirm or dismiss in ## Open Conflicts. Hints only — nothing is
+    # resolved or suppressed here, and the prompt is unchanged when the batch
+    # has no candidates.
+    hints = format_hints(find_candidate_conflicts(docs))
+    if hints:
+        prompt += "\n" + hints
 
     if provider == "ollama":
         merged = _call_ollama(prompt)

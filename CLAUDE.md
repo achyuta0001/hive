@@ -166,6 +166,15 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    source doc got silently dropped — this happened on a weak local model
    before validation existed. Batches arrive pre-grouped by
    `core/clustering.py` (or as one manual batch in `--topic` legacy mode).
+   Before the LLM call, `core/precheck.py`'s deterministic pre-checks
+   (`find_candidate_conflicts` — numeric-value diff with context anchor,
+   timestamp staleness ≥180 days with vocabulary overlap, frontmatter
+   mismatch on non-authorial keys) run over the batch; any candidates are
+   appended to the user prompt via `format_hints` as hints the model must
+   explicitly confirm or dismiss in `## Open Conflicts`. Hints never
+   resolve or suppress anything, and a clean batch leaves the prompt
+   byte-identical. Offline tests: `python3 tests/test_precheck.py`
+   (no network, no DB).
 
 8. **`main.py`** — orchestrates the pipeline and prints what happened
    (embedded vs. reused vectors, compiled vs. skipped clusters) so the
@@ -217,9 +226,6 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
 
 - `pgvector`/Postgres once SQLite's naive hash tracking becomes limiting
   (explicitly not before — don't add infra ahead of the need).
-- Rule-based conflict pre-checks (timestamp diff, numeric value diff,
-  frontmatter mismatch) so the LLM is only called on genuinely ambiguous
-  contradictions.
 - Confluence connector next (messiest API surface of the three: v1/v2
   split, storage-format XML).
 - SQLite FTS5 or simple vector search on top of the serving layer, once
