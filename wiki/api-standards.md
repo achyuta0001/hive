@@ -1,6 +1,5 @@
-## Api Standards
-
-*Source: `api-standards.md`*
+## API Standards
+*Source: api-standards.md*
 
 # API Standards
 
@@ -50,8 +49,7 @@ Do not use header-based versioning — it is harder to test, harder to
 document, and invisible in access logs.
 
 ## Frontend Conventions
-
-*Source: `frontend-conventions.md`*
+*Source: frontend-conventions.md*
 
 # Frontend Conventions
 
@@ -99,10 +97,8 @@ Any PR that exceeds the budget must include a justification and a plan to
 reduce it.
 
 ## Open Conflicts
-
-- **JSON Naming Convention**: The API Standards document (source `api-standards.md`) requires **snake_case** for JSON keys in request/response bodies, while the Frontend Conventions document (source `frontend-conventions.md`) requires **camelCase** for JSON keys exchanged with the backend. This represents a direct contradiction between backend and frontend conventions.
+- JSON Naming Convention: api-standards.md mandates **snake_case** for JSON keys in API request and response bodies; frontend-conventions.md mandates **camelCase** for JSON keys exchanged with the backend.
 
 ## Sources
-
 - api-standards.md
 - frontend-conventions.md

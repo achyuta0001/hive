@@ -123,12 +123,28 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    Docs missing an embedding are excluded from clustering rather than
    guessed at.
 
-5. **`connectors/markdown_fs.py`** — the first (and simplest) connector:
+5. **`core/permissions.py`** — the capture-only permissions layer (see
+   `docs/superpowers/specs/2026-07-17-permissions-layer-design.md`).
+   Permission entries are namespaced opaque strings — bare `"local"` or
+   `"<namespace>:<type>:<value>"` (e.g. `notion:integration:workspace`,
+   future `confluence:group:engineering`); downstream code compares by
+   string equality only, never parses. `validate_permissions(doc)` runs in
+   `main.py` on every ingested doc before hash-diff, so a connector that
+   forgets to populate `permissions` fails loudly. After each successful
+   compile, `save_page_permissions(slug, docs)` (in `core/hash_diff.py`,
+   `page_permission` table) records the full per-source map
+   `{doc_id: [entries]}` for that page — no intersection/union policy is
+   baked in. `GET /wiki/{slug}` exposes the map plus a derived
+   `restricted` bool as metadata. **Nothing enforces yet** — enforcement
+   (caller identity + policy) bolts onto the FastAPI layer when a second
+   reader exists, with full per-doc data already recorded. Offline tests:
+   `python3 tests/test_permissions.py`.
+
+6. **`connectors/markdown_fs.py`** — the first (and simplest) connector:
    walks a folder recursively for `.md` files, parses YAML frontmatter, and
-   returns canonical `Document` objects. `permissions` is currently
-   hardcoded to `["local"]` — a real permission-mapping layer must exist
-   before adding any connector with real access control (Notion,
-   Confluence).
+   returns canonical `Document` objects. `permissions` is `["local"]` — a
+   legitimate canonical entry under the capture-only permissions layer,
+   not a placeholder.
 
 6. **`connectors/notion.py`** — the second connector, validated against a
    real workspace. `list_documents()` takes no folder arg (Notion has no
@@ -147,7 +163,11 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    internal integration token, not OAuth — deliberate: OAuth needs a
    registered public integration and a local callback server, infra not
    justified for a single-user MVP (see "cost principle" above; revisit if
-   Hive ever needs multi-user/multi-workspace).
+   Hive ever needs multi-user/multi-workspace). `permissions` is
+   `["notion:integration:workspace"]` — Notion's API exposes no per-page
+   ACLs to internal integrations, so this records the honest scope
+   ("whatever the token can see"); real per-page ACLs need OAuth +
+   enterprise API, deferred with the rest of the OAuth work.
 
 7. **`core/compiler.py`** — the only stage that genuinely needs an LLM.
    `compile_docs(docs, topic_slug, provider)` takes a batch of related
@@ -215,9 +235,12 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
 - **Never let a connector leak source-specific logic below the canonical
   layer.** If `compiler.py` or any future permission/linting code branches
   on `doc.source`, the canonical schema is incomplete — fix the schema.
-- Permissions are not implemented beyond the `["local"]` placeholder —
-  don't wire up a source with real ACLs (Notion, Confluence) before that
-  layer exists.
+- Permissions are **capture-only**: connectors must populate
+  `Document.permissions` with valid namespaced entries (`main.py` fails
+  loudly if they don't), and every compiled page's per-source map is
+  recorded in `state.db`. Nothing enforces yet — do not add caller
+  identity/filtering infra before a second reader exists, and do not let
+  a new connector ship with empty or made-up permission entries.
 - **Don't remove or weaken `_validate_output`'s checks** in `compiler.py` —
   it's the safety net that catches a model silently dropping a source doc
   or omitting a required section, which has actually happened.

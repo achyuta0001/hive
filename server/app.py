@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.canonical import Document
 from core.compiler import WIKI_DIR, compile_docs
+from core.hash_diff import load_page_permissions
 
 app = FastAPI(title="Hive Serving Layer")
 
@@ -64,7 +65,15 @@ def get_wiki_page(topic_slug: str) -> dict:
     path = WIKI_DIR / f"{topic_slug}.md"
     if not path.exists():
         raise HTTPException(404, f"no compiled page for topic '{topic_slug}'")
-    return {"topic_slug": topic_slug, "content": path.read_text(encoding="utf-8")}
+    # Capture-only: permissions are exposed as metadata, not enforced.
+    permissions = load_page_permissions(topic_slug)
+    restricted = any(entries != ["local"] for entries in permissions.values())
+    return {
+        "topic_slug": topic_slug,
+        "content": path.read_text(encoding="utf-8"),
+        "permissions": permissions,
+        "restricted": restricted,
+    }
 
 
 @app.get("/wiki")

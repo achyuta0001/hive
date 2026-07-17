@@ -142,7 +142,10 @@ def _walk_page(page_id: str, title: str, id_path: str, docs: list[Document]) -> 
         title=title,
         content=content,
         metadata={},
-        permissions=["local"],
+        # Notion's API exposes no per-page ACLs to internal integrations, so
+        # this records the honest scope — everything the token can see; real
+        # per-page ACLs would need OAuth + enterprise API (deferred, see spec).
+        permissions=["notion:integration:workspace"],
         links=[],
         source_url=page.get("url"),
         last_modified=_parse_time(page.get("last_edited_time")),

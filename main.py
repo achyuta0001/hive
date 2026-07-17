@@ -2,12 +2,14 @@
 main.py — Hive pipeline orchestration script.
 
 Ties the pipeline modules into a single runnable entry point:
-1. connector.list_documents()   — ingest (markdown folder or Notion)
-2. hash_diff.filter_changed()   — skip unchanged content
-3. embeddings.embed_docs()      — vectorize new/changed docs (stored vectors reused)
-4. clustering.cluster_docs()    — group ALL docs into topics
-5. compiler.compile_docs()      — merge each changed cluster into a wiki page
-6. hash_diff.mark_synced()      — record hashes so next run skips them
+1. connector.list_documents()      — ingest (markdown folder or Notion)
+2. permissions.validate_permissions() — fail loudly if a connector forgot ACLs
+3. hash_diff.filter_changed()      — skip unchanged content
+4. embeddings.embed_docs()         — vectorize new/changed docs (stored vectors reused)
+5. clustering.cluster_docs()       — group ALL docs into topics
+6. compiler.compile_docs()         — merge each changed cluster into a wiki page
+7. hash_diff.save_page_permissions() — record each page's per-doc ACLs (capture-only)
+8. hash_diff.mark_synced()         — record hashes so next run skips them
 
 Usage:
     python main.py                          # cluster mode: one page per topic
@@ -31,7 +33,15 @@ import argparse
 import sys
 
 from connectors import markdown_fs, notion
-from core.hash_diff import filter_changed, load_embeddings, mark_synced, reset_state, save_embeddings
+from core.hash_diff import (
+    filter_changed,
+    load_embeddings,
+    mark_synced,
+    reset_state,
+    save_embeddings,
+    save_page_permissions,
+)
+from core.permissions import validate_permissions
 from core.compiler import compile_docs
 from core.clustering import cluster_docs
 from core.embeddings import embed_docs
@@ -103,6 +113,14 @@ def main() -> None:
         print("No documents found — nothing to do.")
         return
 
+    # Connector contract check — a connector that forgets ACLs fails loudly.
+    for doc in docs:
+        try:
+            validate_permissions(doc)
+        except ValueError as exc:
+            print(f"Permission validation failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+
     # --- 2. Diff ---
     changed = filter_changed(docs)
     skipped = len(docs) - len(changed)
@@ -121,6 +139,7 @@ def main() -> None:
         # Legacy single-batch mode: everything changed goes into one page.
         try:
             out_paths = [compile_docs(changed, args.topic, provider=args.provider)]
+            save_page_permissions(args.topic, changed)
         except Exception as exc:
             print(f"Compilation failed: {exc}", file=sys.stderr)
             print("(State not saved — documents will retry on next run.)")
@@ -150,6 +169,7 @@ def main() -> None:
                 continue
             try:
                 out_paths.append(compile_docs(members, slug, provider=args.provider))
+                save_page_permissions(slug, members)
             except Exception as exc:
                 print(f"Compilation failed for topic '{slug}': {exc}", file=sys.stderr)
                 print("(State not saved — documents will retry on next run.)")

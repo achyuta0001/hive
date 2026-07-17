@@ -1,11 +1,5 @@
 ## Deployment Guide
-
-*Source: deployment-guide.md*
-
-Title: Deployment Guide
-
-# Deployment Guide
-
+*Source: deployment-guide.md
 This document describes the standard deployment process for all production
 services at Acme Corp. All teams must follow this procedure unless an
 explicit exception has been approved by the infrastructure team.
@@ -41,14 +35,8 @@ After the deploy completes, the engineer must verify the following within
 If any of these checks fail, initiate the rollback plan immediately —
 do not attempt to hotfix in production.
 
----
-
-## DevOps Notes
-
-*Source: devops-notes.md*
-
-Title: DevOps Notes
-
+## Devops Notes
+*Source: devops-notes.md
 # DevOps Notes
 
 Internal working notes from the DevOps team. These reflect practical
@@ -85,19 +73,10 @@ All staging deployments must mirror production deployment order exactly.
 We've seen bugs that only reproduce when staging uses a different migration
 order than prod. Don't let staging drift.
 
----
-
 ## Open Conflicts
-
-- **Migration order**: The Deployment Guide states that database migrations must be run **before** the new application code is deployed. The DevOps Notes advocate running migrations **after** the new code is deployed, citing practical experience and past incidents. (Sources: deployment-guide.md vs. devops-notes.md)
-
-- **On‑call notification for hotfixes**: The Deployment Guide requires the on‑call engineer to be notified at least 30 minutes before any deploy window opens. The DevOps Notes allow skipping that 30‑minute window for critical production hotfixes (though the engineer should be pinged afterward). (Sources: deployment-guide.md vs. devops-notes.md)
-
-- **CI checks for hotfixes**: The Deployment Guide mandates that all CI checks on the release branch must be green before a production deploy. The DevOps Notes permit bypassing CI for hotfixes that are single‑line reverts. (Sources: deployment-guide.md vs. devops-notes.md)
-
----
+- **Migration order**: The Deployment Guide states migrations must be run **before** new application code ([source: deployment-guide.md]), whereas DevOps Notes describes running migrations **after** code deployment as the practiced approach ([source: devops-notes.md]).
+- **Hotfix / on‑call notification**: The Deployment Guide forbids hotfixing in production and requires the on‑call engineer to be notified at least 30 minutes before the deploy window ([source: deployment-guide.md]). DevOps Notes provides a hotfix protocol that allows skipping the 30‑minute on‑call notification window (with a follow‑up ping) and permits an abbreviated checklist for critical production fixes ([source: devops-notes.md]).
 
 ## Sources
-
 - deployment-guide.md
 - devops-notes.md
