@@ -44,6 +44,17 @@ def _connect() -> sqlite3.Connection:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS sync_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT DEFAULT CURRENT_TIMESTAMP,
+            docs_total INTEGER NOT NULL,
+            docs_skipped INTEGER NOT NULL,
+            tokens_saved_estimate INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS page_permission (
             topic_slug TEXT NOT NULL,
             source TEXT NOT NULL,
@@ -185,11 +196,50 @@ def load_page_permissions(topic_slug: str) -> dict[str, list[str]]:
     return result
 
 
+def record_sync_stats(docs_total: int, docs_skipped: int, tokens_saved_estimate: int) -> None:
+    """
+    Record one sync run's cost-gate outcome: how many docs the hash-diff
+    filter kept away from embeddings/LLM calls, and a rough token estimate
+    (chars/4) of what that skipped content would have cost to reprocess.
+    This is the built-in "what Hive saved you" number - honest because it
+    is measured at the gate, not modeled.
+    """
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO sync_stats (docs_total, docs_skipped, tokens_saved_estimate)
+        VALUES (?, ?, ?)
+        """,
+        (docs_total, docs_skipped, tokens_saved_estimate),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_sync_stats() -> dict:
+    """Cumulative cost-gate totals across all recorded sync runs."""
+    conn = _connect()
+    runs, skipped, saved = conn.execute(
+        """
+        SELECT COUNT(*), COALESCE(SUM(docs_skipped), 0),
+               COALESCE(SUM(tokens_saved_estimate), 0)
+        FROM sync_stats
+        """
+    ).fetchone()
+    conn.close()
+    return {
+        "runs": runs,
+        "docs_skipped_total": skipped,
+        "tokens_saved_estimate_total": saved,
+    }
+
+
 def reset_state() -> None:
     """Wipe all tracked state - useful for testing the pipeline from scratch."""
     conn = _connect()
     conn.execute("DELETE FROM doc_state")
     conn.execute("DELETE FROM doc_embedding")
     conn.execute("DELETE FROM page_permission")
+    conn.execute("DELETE FROM sync_stats")
     conn.commit()
     conn.close()

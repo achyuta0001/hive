@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.canonical import Document
 from core.compiler import WIKI_DIR, compile_docs
+from core.hash_diff import load_sync_stats
 from core.hash_diff import load_page_permissions
 
 app = FastAPI(title="Hive Serving Layer")
@@ -81,6 +82,14 @@ def list_wiki_pages() -> dict:
     if not WIKI_DIR.exists():
         return {"topics": []}
     return {"topics": sorted(p.stem for p in WIKI_DIR.glob("*.md"))}
+
+
+@app.get("/stats")
+def get_stats() -> dict:
+    """Cumulative cost-gate savings: how much unchanged content the
+    hash-diff filter kept away from embeddings/LLM calls, measured at the
+    gate across all recorded sync runs."""
+    return load_sync_stats()
 
 
 @app.post("/check-conflicts", response_model=ConflictCheckResponse)
