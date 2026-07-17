@@ -1,6 +1,5 @@
 ## Architecture Overview
-*Source: architecture-overview.md*
-Title: Architecture Overview
+*Source: `architecture-overview.md`*
 
 # Architecture Overview
 
@@ -50,13 +49,10 @@ perspectives. A final decision has not been formalized.
 
 The API Gateway enforces a shared set of conventions (see API Standards for
 details) including URL-based versioning, cursor pagination, and standard
-HTTP status codes. The JSON naming convention (snake_case per backend standards vs. camelCase per frontend preferences) remains an open
-point of friction — a transformation layer at the gateway has been proposed
-but not yet implemented.
-
-## Observability
-
-All services must emit structured logs (JSON format per frontend preferences) remains an open point of friction — a transformation layer at the gateway has been proposed but not yet implemented.
+HTTP status codes. The JSON naming convention (snake_case per backend
+standards vs. camelCase per frontend preferences) remains an open point of
+friction — a transformation layer at the gateway has been proposed but not
+yet implemented.
 
 ## Observability
 
