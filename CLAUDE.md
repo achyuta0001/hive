@@ -58,8 +58,10 @@ uvicorn server.app:app --reload
 claude mcp add hive -e NVIDIA_NIM_API_KEY=... -- python3 mcp_server.py
 ```
 
-There is no test suite, linter, or build step configured yet. Verify changes
-manually via the done signals below.
+Offline test suites live in `tests/` (`python3 tests/test_<name>.py` — no
+network, no API keys) and run in CI on every PR
+(`.github/workflows/tests.yml`). There is still no linter or build step;
+LLM-touching behavior is verified manually via the done signals below.
 
 **Manual verification loop (this is how correctness is checked in this repo):**
 1. `python main.py --reset` — first run should embed all docs and compile one
@@ -229,7 +231,11 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
 
 11. **`server/app.py`** — the serving layer: a thin, long-lived FastAPI
    process wrapping `core/` functions directly, no new business logic.
-   `GET /wiki` lists compiled topics, `GET /wiki/{topic_slug}` fetches one.
+   `GET /wiki` lists compiled topics, `GET /wiki/{topic_slug}` fetches one
+   (with its recorded permission map), `GET /stats` returns cumulative
+   cost-gate savings (runs, docs skipped, estimated tokens not reprocessed
+   — recorded by `main.py` per sync via `record_sync_stats`, chars/4
+   estimate measured at the hash-diff gate).
    `POST /check-conflicts` reuses `compile_docs` itself — it builds a
    synthetic 2-doc batch (the existing compiled page as baseline + new
    candidate content) against a scratch topic slug (`_conflict_check_*`,
@@ -240,7 +246,8 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    (API scope, why not full-text search yet, agent-integration design).
 
 12. **`mcp_server.py`** — an MCP server (stdio transport) for Claude Code,
-   exposing `hive_get_wiki_page`, `hive_list_topics`, `hive_check_conflicts`
+   exposing `hive_get_wiki_page`, `hive_list_topics`, `hive_check_conflicts`,
+   `hive_get_stats`
    as MCP tools. Deliberately a thin adapter that imports and calls
    `server/app.py`'s functions directly (same process, no HTTP hop) — there
    is exactly one implementation of each operation behind both the HTTP API
