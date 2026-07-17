@@ -44,6 +44,10 @@ python main.py --cluster-threshold 0.75 --embed-provider ollama
 # Ingest from Notion instead of markdown (requires NOTION_API_KEY)
 python main.py --source notion --topic notion-stress-test
 
+# Ingest from Confluence Cloud (requires CONFLUENCE_BASE_URL, CONFLUENCE_EMAIL,
+# CONFLUENCE_API_TOKEN; connector not yet validated against a live site)
+python main.py --source confluence
+
 # Wipe hash-tracking state so every doc is treated as new/changed
 python main.py --reset
 
@@ -146,7 +150,7 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    legitimate canonical entry under the capture-only permissions layer,
    not a placeholder.
 
-6. **`connectors/notion.py`** — the second connector, validated against a
+7. **`connectors/notion.py`** — the second connector, validated against a
    real workspace. `list_documents()` takes no folder arg (Notion has no
    filesystem); it calls `/v1/search` to auto-discover pages/databases
    explicitly shared with the integration token (`NOTION_API_KEY`), then
@@ -169,7 +173,27 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    ("whatever the token can see"); real per-page ACLs need OAuth +
    enterprise API, deferred with the rest of the OAuth work.
 
-7. **`core/compiler.py`** — the only stage that genuinely needs an LLM.
+8. **`connectors/confluence.py`** — the third connector (Confluence
+   **Cloud** only). **NOT yet validated against a live site** — built
+   against Atlassian API docs with offline fixture tests
+   (`python3 tests/test_confluence.py`); treat the first real-site run
+   as part of verification (the Notion duplication bug only surfaced
+   live). Basic auth via `CONFLUENCE_BASE_URL` / `CONFLUENCE_EMAIL` /
+   `CONFLUENCE_API_TOKEN`, stdlib `urllib`, all HTTP through one
+   `_get()` seam tests monkeypatch. v2 API for spaces/pages (cursor
+   pagination); v1 only for read restrictions (v2 has no equivalent).
+   Storage-format XHTML converts to markdown-ish text via an
+   `html.parser` subclass — code macros keep their language, unknown
+   macros keep inner text, empty container pages are skipped. First
+   connector capturing real ACLs: read restrictions →
+   `confluence:user:<accountId>` / `confluence:group:<name>`;
+   unrestricted pages inherit space permissions and record the honest
+   scope `confluence:space:<spaceKey>`. Restriction-fetch failures
+   propagate rather than falling back to a broader-looking scope. Ids
+   are path-style title chains (`"Space/Parent/Title"`), mirroring the
+   other connectors.
+
+9. **`core/compiler.py`** — the only stage that genuinely needs an LLM.
    `compile_docs(docs, topic_slug, provider)` takes a batch of related
    Documents and produces one merged wiki page at `wiki/{topic_slug}.md`.
    Provider is swappable: `"nvidia"` (default — NVIDIA NIM via
@@ -196,14 +220,14 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    byte-identical. Offline tests: `python3 tests/test_precheck.py`
    (no network, no DB).
 
-8. **`main.py`** — orchestrates the pipeline and prints what happened
+10. **`main.py`** — orchestrates the pipeline and prints what happened
    (embedded vs. reused vectors, compiled vs. skipped clusters) so the
    hash-diff behavior stays observable. `--source markdown|notion` selects
    the connector; `--embed-provider nvidia|ollama` the embedding backend;
    `--cluster-threshold` tunes grouping; `--topic <slug>` forces legacy
    single-batch mode (no clustering, no embeddings).
 
-9. **`server/app.py`** — the serving layer: a thin, long-lived FastAPI
+11. **`server/app.py`** — the serving layer: a thin, long-lived FastAPI
    process wrapping `core/` functions directly, no new business logic.
    `GET /wiki` lists compiled topics, `GET /wiki/{topic_slug}` fetches one.
    `POST /check-conflicts` reuses `compile_docs` itself — it builds a
@@ -215,7 +239,7 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
    `.claude/plans/frolicking-drifting-milner.md` for the full rationale
    (API scope, why not full-text search yet, agent-integration design).
 
-10. **`mcp_server.py`** — an MCP server (stdio transport) for Claude Code,
+12. **`mcp_server.py`** — an MCP server (stdio transport) for Claude Code,
    exposing `hive_get_wiki_page`, `hive_list_topics`, `hive_check_conflicts`
    as MCP tools. Deliberately a thin adapter that imports and calls
    `server/app.py`'s functions directly (same process, no HTTP hop) — there
@@ -249,8 +273,9 @@ connectors/{markdown_fs,notion}.py → core/hash_diff.py → core/embeddings.py 
 
 - `pgvector`/Postgres once SQLite's naive hash tracking becomes limiting
   (explicitly not before — don't add infra ahead of the need).
-- Confluence connector next (messiest API surface of the three: v1/v2
-  split, storage-format XML).
+- Live validation of the Confluence connector against a real site
+  (free-tier Confluence Cloud works) — the connector ships offline-tested
+  only.
 - SQLite FTS5 or simple vector search on top of the serving layer, once
   there's enough compiled content that slug-keyed lookups aren't sufficient
   (explicitly not before — the current `server/app.py` is slug-lookup only,
