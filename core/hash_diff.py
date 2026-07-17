@@ -42,6 +42,17 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS page_permission (
+            topic_slug TEXT NOT NULL,
+            source TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            permissions TEXT NOT NULL,
+            PRIMARY KEY (topic_slug, source, doc_id)
+        )
+        """
+    )
     conn.commit()
     return conn
 
@@ -138,10 +149,47 @@ def load_embeddings(docs: list[Document]) -> dict[str, list[float]]:
     return result
 
 
+def save_page_permissions(topic_slug: str, docs: list[Document]) -> None:
+    """
+    Record which source docs (and their ACLs) a compiled page was built from,
+    one row per member doc with permissions stored as a JSON list. Capture-only,
+    no enforcement - existing rows for the slug are replaced wholesale.
+    """
+    conn = _connect()
+    conn.execute("DELETE FROM page_permission WHERE topic_slug = ?", (topic_slug,))
+    for doc in docs:
+        conn.execute(
+            """
+            INSERT INTO page_permission (topic_slug, source, doc_id, permissions)
+            VALUES (?, ?, ?, ?)
+            """,
+            (topic_slug, doc.source, doc.id, json.dumps(doc.permissions)),
+        )
+    conn.commit()
+    conn.close()
+
+
+def load_page_permissions(topic_slug: str) -> dict[str, list[str]]:
+    """
+    Load the recorded per-doc permissions for a compiled page, keyed
+    "<source>::<doc_id>". Returns an empty dict if the slug is unknown.
+    """
+    conn = _connect()
+    result: dict[str, list[str]] = {}
+    for source, doc_id, permissions in conn.execute(
+        "SELECT source, doc_id, permissions FROM page_permission WHERE topic_slug = ?",
+        (topic_slug,),
+    ):
+        result[f"{source}::{doc_id}"] = json.loads(permissions)
+    conn.close()
+    return result
+
+
 def reset_state() -> None:
     """Wipe all tracked state - useful for testing the pipeline from scratch."""
     conn = _connect()
     conn.execute("DELETE FROM doc_state")
     conn.execute("DELETE FROM doc_embedding")
+    conn.execute("DELETE FROM page_permission")
     conn.commit()
     conn.close()
