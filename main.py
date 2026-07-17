@@ -37,6 +37,7 @@ from core.hash_diff import (
     filter_changed,
     load_embeddings,
     mark_synced,
+    record_sync_stats,
     reset_state,
     save_embeddings,
     save_page_permissions,
@@ -129,10 +130,18 @@ def main() -> None:
     changed = filter_changed(docs)
     skipped = len(docs) - len(changed)
 
+    # Cost-gate savings: rough token estimate (chars/4) of the unchanged
+    # content that will NOT be re-embedded or re-sent to the LLM this run.
+    changed_keys = {f"{d.source}::{d.id}" for d in changed}
+    tokens_saved = sum(
+        len(d.content) for d in docs if f"{d.source}::{d.id}" not in changed_keys
+    ) // 4
+
     if skipped > 0:
-        print(f"Skipped {skipped} unchanged document(s).")
+        print(f"Skipped {skipped} unchanged document(s) (~{tokens_saved:,} tokens not reprocessed).")
 
     if not changed:
+        record_sync_stats(len(docs), skipped, tokens_saved)
         print("Nothing changed, skipping.")
         return
 
@@ -164,7 +173,6 @@ def main() -> None:
         print(f"Embedded {len(fresh)} doc(s), reused {len(stored)} stored vector(s).")
 
         clusters = cluster_docs(docs, {**stored, **fresh}, threshold=args.cluster_threshold)
-        changed_keys = {f"{d.source}::{d.id}" for d in changed}
 
         out_paths = []
         for slug, members in clusters:
@@ -181,6 +189,7 @@ def main() -> None:
 
     # --- 4. Record ---
     mark_synced(changed)
+    record_sync_stats(len(docs), skipped, tokens_saved)
 
     # --- 5. Report ---
     for out_path in out_paths:
