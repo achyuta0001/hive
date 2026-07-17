@@ -32,7 +32,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from connectors import markdown_fs, notion
+from connectors import confluence, markdown_fs, notion
 from core.hash_diff import (
     filter_changed,
     load_embeddings,
@@ -89,9 +89,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--source",
-        choices=["markdown", "notion"],
+        choices=["markdown", "notion", "confluence"],
         default="markdown",
-        help="Document source (default: markdown). Use 'notion' with NOTION_API_KEY set.",
+        help="Document source (default: markdown). Use 'notion' with NOTION_API_KEY "
+             "set, or 'confluence' with CONFLUENCE_BASE_URL/EMAIL/API_TOKEN set.",
     )
     args = parser.parse_args()
 
@@ -104,6 +105,9 @@ def main() -> None:
     if args.source == "notion":
         print("Scanning Notion for shared pages/databases...")
         docs = notion.list_documents()
+    elif args.source == "confluence":
+        print("Scanning Confluence spaces...")
+        docs = confluence.list_documents()
     else:
         print(f"Scanning {args.folder!r} for markdown files...")
         docs = markdown_fs.list_documents(args.folder)
