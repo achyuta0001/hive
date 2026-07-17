@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from server.app import ConflictCheckRequest, check_conflicts, get_wiki_page, list_wiki_pages
+from server.app import (
+    ConflictCheckRequest,
+    check_conflicts,
+    get_stats,
+    get_wiki_page,
+    list_wiki_pages,
+)
 
 mcp = FastMCP("hive")
 
@@ -27,6 +33,14 @@ def hive_get_wiki_page(topic_slug: str) -> dict:
 def hive_list_topics() -> dict:
     """List all topic slugs with a compiled Hive wiki page."""
     return list_wiki_pages()
+
+
+@mcp.tool()
+def hive_get_stats() -> dict:
+    """Cumulative cost-gate savings: docs and estimated tokens the
+    hash-diff filter kept away from embeddings/LLM calls across all
+    recorded sync runs."""
+    return get_stats()
 
 
 @mcp.tool()
