@@ -2,7 +2,7 @@
 main.py — Hive pipeline orchestration script.
 
 Ties the pipeline modules into a single runnable entry point:
-1. connector.list_documents()      — ingest (markdown folder or Notion)
+1. connector.list_documents()      — ingest (markdown folder, Notion, or Confluence)
 2. permissions.validate_permissions() — fail loudly if a connector forgot ACLs
 3. hash_diff.filter_changed()      — skip unchanged content
 4. embeddings.embed_docs()         — vectorize new/changed docs (stored vectors reused)

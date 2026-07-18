@@ -69,8 +69,10 @@ server/app.py (FastAPI) + mcp_server.py (MCP)   real-time serving, one implement
   scratch slug — never mutates the real page). MCP tools
   (`hive_get_wiki_page`, `hive_list_topics`, `hive_check_conflicts`,
   `hive_get_stats`) call the same functions directly.
-- **CI:** four offline test suites (`tests/`) run on every push/PR —
-  no network, no keys.
+- **CI:** eight offline test suites (`tests/`) run on every push/PR —
+  no network, no keys. Coverage: pre-checks, permissions, Confluence
+  fixtures, Notion fixtures, clustering, hash-diff gate, serving
+  endpoints, savings stats.
 
 ## Tech stack
 
