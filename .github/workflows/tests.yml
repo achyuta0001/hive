@@ -23,3 +23,5 @@ jobs:
       - run: python tests/test_hash_diff.py
       - run: python tests/test_notion.py
       - run: python tests/test_server.py
+      - run: python tests/test_markdown_fs.py
+      - run: python tests/test_compiler.py
