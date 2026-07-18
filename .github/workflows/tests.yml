@@ -19,3 +19,7 @@ jobs:
       - run: python tests/test_permissions.py
       - run: python tests/test_confluence.py
       - run: python tests/test_stats.py
+      - run: python tests/test_clustering.py
+      - run: python tests/test_hash_diff.py
+      - run: python tests/test_notion.py
+      - run: python tests/test_server.py
